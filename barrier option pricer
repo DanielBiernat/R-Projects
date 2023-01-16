@@ -1,0 +1,331 @@
+
+
+wykres2 <- function(S,K,r,q,t,sig,B,put_call,in_out){
+  put <-  function(K){
+    f <- function(x){pmax(K-x,0)}
+    return(f)
+  }
+  call <-  function(K){
+    f <- function(x){pmax(x-K,0)}
+    return(f)
+  }
+  concall <- function(K){
+    f <- function(x){
+      if(x>K){return(1)}
+      if(x<=K){return(0)}
+    }
+    
+    return(f)
+  }
+  
+  conput <- function(K){
+    f <- function(x){
+      if(x>K){return(0)}
+      if(x<=K){return(1)}
+    }
+    return(f)
+  }
+  
+  aoncall <- function(K){
+    f <- function(x){
+      if(x>K){return(x)}
+      if(x<=K){return(0)}
+      
+    }
+    return(f)
+  }
+  
+  aonput <- function(K){
+    f <- function(x){
+      if(x>K){return(0)}
+      if(x<=K){return(x)}
+    }
+    return(f)
+  }
+
+  #outy
+  if(in_out=="o"){
+    if (put_call == "c" && B>S){ #up out call
+      if (K >= B){ 
+        g <- function(x){return(0)}
+      }
+      if(K<B){ g <-function(x){ call(K)(x)-aoncall(B)(x) + K * concall(B)(x)}
+      }  
+    }
+    if (put_call == "p" && B>S){ #up out put
+      if (K < B){
+        g <- function(x){put(K)(x)}
+      }
+      if(K>=B){ g <- function(x){ K * conput(B)(x) - aonput(B)(x)}}
+    }
+    if(put_call == "c" && B<=S){ #down out call
+      if (K < B){
+        g <-function(x){ aoncall(B)(x) - K* concall(B)(x)}
+      }
+      if(K>=B) {g <-function(x){ call(K)(x) }}
+    }
+    if(put_call == "p" && B<=S){ #down out put
+      if (K<B) g <- function(x){return( 0)}
+      if(K>=B){g <-function(x){ put(K)(x) - K * conput(B)(x) + aonput(B)(x)}}
+    }
+    g <- Vectorize(g)
+    f=function(x){g(x)- (x/B)^(1 - 2*(r-q)/sig^2) * g(B^2/x)}
+    return(Vectorize(f))
+  }
+  if(in_out == "i"){ #Wszystkie opcje "in"
+    if(put_call == "p"){
+      f=function(x){put(K)(x) - wykres2(S,K,r,q,t,sig,B,put_call,"o")(x)}
+      return(f)
+    }
+    if(put_call == "c"){
+      f=function(x){call(K)(x) - wykres2(S,K,r,q,t,sig,B,put_call,"o")(x)}
+      return(f)
+    }
+    
+  }
+}
+
+#koniec czesci mateusza
+
+bs_barrier_price <- function(S, K, r, q, T, sig, B, put_call, in_out) {
+ 
+  if(is.null(S)||is.null(K)||is.null(r)|| is.null(q)||is.null(T)||is.null(sig)||is.null(B)){
+    return(0)
+  }
+  if(B>S){
+    u_or_d="u"
+  }
+  if(B<=S){
+    u_or_d="d"
+  }
+  type=paste(u_or_d,in_out,put_call,sep="")
+  BlackScholes <- function(S, K, r, q, T, sig, type) {
+    if (type == "C") {
+      d1 <- (log(S / K) + (r - q + sig ^ 2 / 2) * T) / (sig * sqrt(T))
+      d2 <- d1 - sig * sqrt(T)
+      
+      value <- exp(-q * T) * S * pnorm(d1) - K * exp(-r * T) * pnorm(d2)
+      return(value)
+    }
+    
+    if (type == "P") {
+      d1 <- (log(S / K) + (r - q + sig ^ 2 / 2) * T) / (sig * sqrt(T))
+      d2 <- d1 - sig * sqrt(T)
+      
+      value <-  (K * exp(-r * T) * pnorm(-d2) - S * exp(-q * T) * pnorm(-d1))
+      return(value)
+    }
+  }
+  hat = function(g, z) {
+    p = 1 - 2 * (r - q) / (sig ^ 2)
+    return(((z / B) ^ p) * g((B ^ 2) / z))
+  }
+  BS <- function(S, K, type = "C") {
+    if (type == "C") {
+      d1 <- (log(S / K) + (r - q + sig ^ 2 / 2) * T) / (sig * sqrt(T))
+      d2 <- d1 - sig * sqrt(T)
+      
+      value <- exp(-q * T) * S * pnorm(d1) - K * exp(-r * T) * pnorm(d2)
+      return(exp(r * T)*value)
+    }
+    
+    if (type == "P") {
+      d1 <- (log(S / K) + (r - q + sig ^ 2 / 2) * T) / (sig * sqrt(T))
+      d2 <- d1 - sig * sqrt(T)
+      
+      value <-  (K * exp(-r * T) * pnorm(-d2) - S * exp(-q * T) * pnorm(-d1))
+      return(exp(r * T)*value)
+    }
+  }
+  con <- function(S, K,type) {
+    d1 <- (log(S / K) + (r - q + sig ^ 2 / 2) * T) / (sig * sqrt(T))
+    d2 <- d1 - sig * sqrt(T)
+    if(type=="C"){
+      value <-   pnorm(d2)
+    }
+    if(type=="P"){
+      value <-   pnorm(-d2)
+    }
+    return(value)
+  }
+  aon <- function(S, K, type = "C") {
+    if (type == "C") {
+      d1 <- (log(S / K) + (r - q + sig ^ 2 / 2) * T) / (sig * sqrt(T))
+      
+      value <-exp(r * T)* exp(-q * T) * S * pnorm(d1)
+      return(value)
+    }
+    
+    if (type == "P") {
+      d1 <- (log(S / K) + (r - q + sig ^ 2 / 2) * T) / (sig * sqrt(T))
+      d2 <- d1 - sig * sqrt(T)
+      
+      
+      value <-exp(r * T)*( S*exp(-q * T) - exp(-q * T) * S * pnorm(d1))
+      return(value)
+    }
+  }
+  if(type=="uoc"){
+    if (K >= B) {
+      f = function(x) {
+        return(0)
+      }
+    }
+    if (K < B) {
+      f = function(x) {
+        return(BS(S = x, K, "C") - aon(x, B, "C") + K * con(x, B,"C"))
+      }
+    }
+    return(exp(-r * T) * (f(S) - hat(f, S)))
+    
+  }
+  if(type=="uic"){
+    return(BlackScholes(S, K, r, q, T, sig, "C") - bs_barrier_price(S, K, r, q, T, sig, B,"c","o"))
+  }
+  if(type=="uop"){
+    if(K<B){
+      f=function(x){return(BS(x,K,"P"))}
+    }
+    
+    
+    if(K>=B){
+      f=function(x){return(K*con(x,B,"P")-aon(x,B,"P"))}
+    }
+    return(exp(-r * T) * (f(S) - hat(f, S)))
+  }
+  if(type=="uip"){
+    return(BlackScholes(S, K, r, q, T, sig, "P") - bs_barrier_price(S, K, r, q, T, sig, B,"p","o"))
+  }
+  if(type=="doc"){
+    if(K<B){
+      f=function(x){aon(x,B,"C")-K*con(x,B,"C")}
+    }
+    if(K>=B){
+      f=function(x){BS(x,K,"C")}
+    }
+    return(exp(-r * T) * (f(S) - hat(f, S)))
+  }
+  if(type=="dic"){
+    return(BlackScholes(S, K, r, q, T, sig, "C") - bs_barrier_price(S, K, r, q, T, sig, B,"c","o"))
+  }
+  if(type=="dop"){
+    if(K<B){
+      f=function(x){return(0)}
+    }
+    if(K>=B){
+      f=function(x){return(BS(x,K,"P")-K*con(x,B,"P")+aon(x,B,"P"))}#tu cos nie dziala
+    }
+    return(exp(-r * T) * (f(S) - hat(f, S)))
+  }
+  if(type=="dip"){
+    return(BlackScholes(S, K, r, q, T, sig, "P") - bs_barrier_price(S, K, r, q, T, sig, B,"p","o"))
+  }
+}
+how_many_after_decimal=4
+pochodna<- function(f,x,error=10^(-how_many_after_decimal)){
+  eps=10^(-4)
+  d=(f(x+eps)-f(x-eps))/(2*eps)
+  eps=10^(-5)
+  d_new=(f(x+eps)-f(x-eps))/(2*eps)
+  while(abs(d_new-d)>error){
+    d=d_new
+    eps=eps/10
+    if(eps==0){return(NULL)}
+    d_new=(f(x+eps)-f(x-eps))/(2*eps)
+  }
+  d=format(round(d, how_many_after_decimal), nsmall = how_many_after_decimal)
+  return(d)
+}
+pochodna2<- function(f,x,error=10^(-how_many_after_decimal)){
+  eps=10^(-2)
+  d=(f(x+eps)-2*f(x)+f(x-eps))/(eps^2)
+  eps=eps/10
+  d_new=(f(x+eps)-2*f(x)+f(x-eps))/(eps^2)
+  while(abs(d_new-d)>error){
+    d=d_new
+    eps=eps/10
+    if(eps==0){return(NULL)}
+    dnew=(f(x+eps)-2*f(x)+f(x-eps))/(eps^2)
+  }
+  d=format(round(d, how_many_after_decimal), nsmall = how_many_after_decimal)
+  return(d)
+}
+bs_barrier_greek <- function(S, K, r, q, T, sig, B, put_call, in_out,greek){
+  eps=10^(-6)
+  if(greek=="delta"){
+    f=function(x){bs_barrier_price(x, K, r, q, T, sig, B, put_call, in_out)}
+    return(pochodna(f,S))
+  }
+  if(greek=="theta"){
+    f=function(x){bs_barrier_price(S, K, r, q, x, sig, B, put_call, in_out)}
+    return(pochodna(f,T))
+    }
+  if(greek=="vega"){
+    f=function(x){bs_barrier_price(S, K, r, q, T, x, B, put_call, in_out)}
+    return(pochodna(f,sig))
+  }
+  if(greek=="rho"){
+    f=function(x){bs_barrier_price(S, K, x, q, T, sig, B, put_call, in_out)}
+    return(pochodna(f,r))
+  }
+  if(greek=="dual_rho"){
+    f=function(x){bs_barrier_price(S, K, r, x, T, sig, B, put_call, in_out)}
+    return(pochodna(f,q))
+  }
+  if(greek=="gamma"){
+    f=function(x){bs_barrier_price(x, K, r, q, T, sig, B, put_call, in_out)}
+    return(pochodna2(f,S))
+  }
+  return(retval)
+}
+
+ui <- fluidPage(
+  
+  #tableOutput('table'),
+  fluidRow(
+    column(4,
+  numericInput("S", "Spot Price:", 100, min = 0.01,step=0.01, max = 10000),
+  numericInput("K", "Strike:", 80, min = 0.01,step=0.01, max = 10000),
+  numericInput("v", "Volatility:", 0.2, min = 0.01, max = 10,step=0.01),
+  numericInput("t", "Time to maturity:", 1, min = 0.01, max = 10,step=0.01),
+  numericInput("r", "Domestic Rate:", 0.05, min = 0, max = 1,step=0.01)
+    ),
+  column(4,
+  numericInput("q", "Foregin Rate:", 0.03, min = 0, max = 1,step=0.01),
+  numericInput("B", "Barrier:", 120, min = 0.01,step=0.01, max = 10000),
+  selectInput("cop", "Call or Put", c("Call"="c","Put"="p"),
+               multiple=FALSE, selectize=FALSE, width=NULL,
+              size=NULL),
+  selectInput("io", "In or Out", c("In"="i","Out"="o"),
+              multiple=FALSE, selectize=FALSE, width=NULL,
+              size=NULL),
+    ),
+  column(4,
+         tableOutput('table'),
+         plotOutput("plot1", click = "plot_click"),
+         sliderInput("slider2", label = h3(""), min = 1, 
+                     max = 1000, value = c(40, 60))      
+  )
+  )
+)
+server <- function(input, output) {
+  output$lowbound <- renderPrint({ input$slider1 })
+  
+  # You can access the values of the second widget with input$slider2, e.g.
+  output$upbound <- renderPrint({ input$slider2 })
+
+  output$plot1 <- renderPlot({
+    plot(wykres2(input$S,input$K,input$r,input$q,input$t,input$v,input$B,input$cop,input$io),
+         xlim=c(input$slider1,input$slider2),main="static replication ",xlab="terminal price",ylab="payout")
+  })
+  #Delta Vega,Rho,Dual Rho,Gamma
+
+  output$table <- renderTable(colnames = FALSE,align = 'lr',cbind(c("Price","Delta","Vega","Rho","Dual Rho","Gamma"),
+                                    c(bs_barrier_price(input$S,input$K,input$r,input$q,input$t,input$v,input$B,input$cop,input$io),
+                                      bs_barrier_greek(input$S,input$K,input$r,input$q,input$t,input$v,input$B,input$cop,input$io,"delta"),
+                                      bs_barrier_greek(input$S,input$K,input$r,input$q,input$t,input$v,input$B,input$cop,input$io,"vega"),
+                                      bs_barrier_greek(input$S,input$K,input$r,input$q,input$t,input$v,input$B,input$cop,input$io,"rho"),
+                                      bs_barrier_greek(input$S,input$K,input$r,input$q,input$t,input$v,input$B,input$cop,input$io,"dual_rho"),
+                                      bs_barrier_greek(input$S,input$K,input$r,input$q,input$t,input$v,input$B,input$cop,input$io,"gamma"))))
+}
+shinyApp(ui, server)
