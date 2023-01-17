@@ -33,6 +33,7 @@ european_union <- c("Austria","Belgium","Bulgaria","Croatia","Cyprus",
                     "Sweden","United Kingdom")
 european_union_map <-   world_map %>%   filter(name %in% european_union)
 bbox_europe <- st_bbox(c(xmin = -10, ymin = 20, xmax = 50, ymax = 80), crs = st_crs(european_union_map))
+
 european_union_map_cropped <- st_crop(european_union_map, bbox_europe)
 
 
