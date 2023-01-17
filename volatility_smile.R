@@ -67,6 +67,7 @@ data$Kurs %<>% as.numeric()
 data %<>% mutate(MonthLetter = substr(Profil, 5, 5),
                  Strike = substr(Profil, 8, 11))
 data %<>% mutate(Strike = as.numeric(Strike))
+
 url <- "https://bossa.pl/edukacja/kontrakty-opcje/opcje/nazwy-opcji"
 page <- read_html(url)
 rm(url)
