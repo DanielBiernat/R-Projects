@@ -8,88 +8,91 @@ library(ggplot2)
 library(plot3D)
 library(plotly)
 library(rgl)
-#download option prices
-url <- "https://www.biznesradar.pl/gielda/pochodne_opcje"
+##### deklaracje funkcji ########
+download_data <- function(url){
+url <- 
 page <- read_html(url)
 rm(url)
 table <- html_table(page, fill = TRUE)
 data = as.data.frame(table[[1]])
 rm(table, page)
-## data cleansing
-filtr = function(x) {
-  substr(x, 1, 2) == "OW"
+return(data)
 }
-data %<>% filter(filtr(Profil) == 1 & Czas != "")
-rm(filtr)
-rawdata <- data
-last_trans <- function(string) {
-  splited = (string %>% strsplit(split = " "))[[1]]
-  if (length(splited) == 1) {
-    return(as.character(Sys.Date()))
+opracuj_dane <- function(data){
+  filtr = function(x) {
+    substr(x, 1, 2) == "OW"
   }
-  else{
-    day = splited[1]
-    month = switch (
-      splited[2],
-      "sty" = "01",
-      "lut" = "02",
-      "mar" = "03",
-      "kwi" = "04",
-      "maj" = "05",
-      "cze" = "06",
-      "lip" = "07",
-      "sie" = "08",
-      "wrz" = "09",
-      "paź" = "10",
-      "lis" = "11",
-      "gru" = "12"
-    )
-    year <- (Sys.Date() %>% substr(1, 4))
-    date = as.Date(paste(year, "-", month, "-", day, sep = ""))
-    if (date < Sys.Date()) {
-      return(as.character(date))
+  data %<>% filter(filtr(Profil) == 1 & Czas != "")
+  rm(filtr)
+  rawdata <- data
+  last_trans <- function(string) {
+    splited = (string %>% strsplit(split = " "))[[1]]
+    if (length(splited) == 1) {
+      return(as.character(Sys.Date()))
     }
     else{
-      year = as.character(as.numeric(year) - 1)
+      day = splited[1]
+      month = switch (
+        splited[2],
+        "sty" = "01",
+        "lut" = "02",
+        "mar" = "03",
+        "kwi" = "04",
+        "maj" = "05",
+        "cze" = "06",
+        "lip" = "07",
+        "sie" = "08",
+        "wrz" = "09",
+        "paź" = "10",
+        "lis" = "11",
+        "gru" = "12"
+      )
+      year <- (Sys.Date() %>% substr(1, 4))
       date = as.Date(paste(year, "-", month, "-", day, sep = ""))
-      return(as.character(date))
+      if (date < Sys.Date()) {
+        return(as.character(date))
+      }
+      else{
+        year = as.character(as.numeric(year) - 1)
+        date = as.Date(paste(year, "-", month, "-", day, sep = ""))
+        return(as.character(date))
+      }
+      
     }
-    
   }
+  last_trans %<>% Vectorize()
+  data %<>% mutate(Last_Trade = last_trans(Czas))
+  data$Last_Trade %<>% as.Date()
+  data %<>% select(Profil, Kurs, Last_Trade)
+  data %<>% filter((Sys.Date() - Last_Trade) < 10)
+  data$Kurs %<>% as.numeric()
+  
+  data %<>% mutate(MonthLetter = substr(Profil, 5, 5),
+                   Strike = substr(Profil, 8, 11))
+  data %<>% mutate(Strike = as.numeric(Strike))
+  url <- "https://bossa.pl/edukacja/kontrakty-opcje/opcje/nazwy-opcji"
+  page <- read_html(url)
+  rm(url)
+  option_letter <- html_table(page, fill = TRUE)[[1]]
+  option_letter %<>% select(-Miesiąc)
+  rm(page)
+  call_or_put <-
+    function(x) {
+      return(which(option_letter == x, arr.ind = T)[2] * (-2) + 3)
+    }
+  month_number <-
+    function(x) {
+      return(which(option_letter == x, arr.ind = T)[1])
+    }
+  
+  call_or_put %<>% Vectorize()
+  month_number %<>% Vectorize()
+  data %<>% mutate(Call_or_Put = call_or_put(MonthLetter))
+  data %<>% mutate(Month_number = month_number(MonthLetter))
+  rm(call_or_put, month_number)
+  rm(option_letter)
+  return(data)
 }
-last_trans %<>% Vectorize()
-data %<>% mutate(Last_Trade = last_trans(Czas))
-data$Last_Trade %<>% as.Date()
-data %<>% select(Profil, Kurs, Last_Trade)
-data %<>% filter((Sys.Date() - Last_Trade) < 10)
-data$Kurs %<>% as.numeric()
-
-data %<>% mutate(MonthLetter = substr(Profil, 5, 5),
-                 Strike = substr(Profil, 8, 11))
-data %<>% mutate(Strike = as.numeric(Strike))
-
-url <- "https://bossa.pl/edukacja/kontrakty-opcje/opcje/nazwy-opcji"
-page <- read_html(url)
-rm(url)
-option_letter <- html_table(page, fill = TRUE)[[1]]
-option_letter %<>% select(-Miesiąc)
-rm(page)
-call_or_put <-
-  function(x) {
-    return(which(option_letter == x, arr.ind = T)[2] * (-2) + 3)
-  }
-month_number <-
-  function(x) {
-    return(which(option_letter == x, arr.ind = T)[1])
-  }
-
-call_or_put %<>% Vectorize()
-month_number %<>% Vectorize()
-data %<>% mutate(Call_or_Put = call_or_put(MonthLetter))
-data %<>% mutate(Month_number = month_number(MonthLetter))
-rm(call_or_put, month_number)
-rm(option_letter)
-#obliczenie 3 piatku miesiaca
 get_no_trade_days <- function(){
   url <- "https://www.gpw.pl/szczegoly-sesji/"
   page <- read_html(url)
@@ -149,7 +152,6 @@ get_no_trade_days <- function(){
   rm(years,convert_to_date,j,k,table,page)
   return(ntd)
 }
-no_trade <- as.Date(get_no_trade_days())
 terminal_date <- function(string, month) {
   month %<>% as.character()
   if (nchar(month) == 1) {
@@ -167,8 +169,6 @@ terminal_date <- function(string, month) {
   return(as.character(date))
 }
 terminal_date %<>% Vectorize()
-data %<>% mutate(Terminal_Date = terminal_date(Profil, Month_number))
-rm(terminal_date)
 time <- function(string) {
   string %<>% as.Date()
   return(as.numeric(string - Sys.Date()) / 365)
@@ -187,54 +187,68 @@ stoch_time<- function(string) {
   }
   return(t/252)
 }
-stoch_time %<>% Vectorize 
-data %<>% mutate(Time = time(Terminal_Date))
-data %<>% filter(Time>0) 
-data %<>% mutate(Stoch_Time = stoch_time(Terminal_Date))
-rm(time)
-
-
-## wyczyszczenie data frame
-row.names(data) = (data$Profil)
-data %<>% select(-Profil,-MonthLetter,-Month_number)
-## download S_0
-url <- "https://strefainwestorow.pl/notowania"
-page <- read_html(url)
-indeksy <- as.data.frame(html_table(page, fill = TRUE)[[1]])
-S0 = indeksy[indeksy[, 1] == "WIG20",]$`Aktualna wartość`
-rm(url, page, indeksy)
-## download rf
-url <- "https://wibor.money.pl/"
-page <- read_html(url)
-wibor <- as.data.frame(html_table(page, fill = TRUE)[[1]])[, 1:2]
-wibor %<>% filter(Termin != "WIBOR TN")
-rm(page, url)
-wibor_time <- function(name) {
-  return(switch(
-    name,
-    "WIBOR ON" = 1 / 365,
-    "WIBOR 1W" = 7 / 365,
-    "WIBOR 2W" = 14 / 365,
-    "WIBOR 1M" = 1 / 12,
-    "WIBOR 3M" = 3 / 12,
-    "WIBOR 6M" = 6 / 12,
-    "WIBOR 1Y" = 1
-  ))
+stoch_time %<>% Vectorize()
+download_S0 <- function(){
+  url <- "https://strefainwestorow.pl/notowania"
+  page <- read_html(url)
+  indeksy <- as.data.frame(html_table(page, fill = TRUE)[[1]])
+  S0 = indeksy[indeksy[, 1] == "WIG20",]$`Aktualna wartość`
+  return(S0)
 }
-wibor_time %<>% Vectorize()
-wibor %<>% mutate(Time = wibor_time(Termin))
-rm(wibor_time)
-cont_rate <- function(r_napis, t) {
-  r_simp = gsub(",", ".", r_napis) %>% as.numeric() %>% '/'(., 100)
-  return((1 / t) * log(1 + r_simp * t))
+download_S0past <- function(){
+  url <- "https://www.biznesradar.pl/notowania-historyczne/WIG20"
+  page <- read_html(url)
+  hisW20 <- as.data.frame(html_table(page, fill = TRUE)[[1]])
+  format_date <- function(s){
+    return(as.Date(paste(substr(s,7,10),"-",substr(s,4,5),"-",substr(s,1,2),sep="")))
+  }
+  hisW20[,"Data"] %<>% format_date() 
+  return(hisW20)
 }
-cont_rate %<>% Vectorize()
-wibor %<>% mutate(r = cont_rate(Wibor, Time))
-rm(cont_rate)
-wibor %<>% select(Time, r)
-#plot(r~Time,wibor,ylim=c(0,0.1))
-## iterpolacja r
+S0_past <- download_S0past() %>% dplyr::select(1,5)
+find_W20past <- function(date){
+  S0_past %>% filter(Data==date) %>% dplyr::select(2) %>% extract2(1)
+}
+match_S0 <- function(date){
+  if(date==Sys.Date()){
+    return(S0)
+  }
+  return(find_W20past(date))
+}
+match_S0 %<>% Vectorize() 
+get_wibor <- function(){
+  url <- "https://wibor.money.pl/"
+  page <- read_html(url)
+  wibor <- as.data.frame(html_table(page, fill = TRUE)[[1]])[, 1:2]
+  wibor %<>% filter(Termin != "WIBOR TN")
+  rm(page, url)
+  wibor_time <- function(name) {
+    return(switch(
+      name,
+      "WIBOR ON" = 1 / 365,
+      "WIBOR 1W" = 7 / 365,
+      "WIBOR 2W" = 14 / 365,
+      "WIBOR 1M" = 1 / 12,
+      "WIBOR 3M" = 3 / 12,
+      "WIBOR 6M" = 6 / 12,
+      "WIBOR 1Y" = 1
+    ))
+  }
+  wibor_time %<>% Vectorize()
+  wibor %<>% mutate(Time = wibor_time(Termin))
+  rm(wibor_time)
+  cont_rate <- function(r_napis, t) {
+    r_simp = gsub(",", ".", r_napis) %>% as.numeric() %>% '/'(., 100)
+    return((1 / t) * log(1 + r_simp * t))
+  }
+  cont_rate %<>% Vectorize()
+  wibor %<>% mutate(r = cont_rate(Wibor, Time))
+  rm(cont_rate)
+  wibor %<>% select(Time, r)
+  return(wibor)
+}
 r_interpol <- function(t) {
+  #wibor=get_wibor()
   t_wib = wibor$Time
   r_wib = wibor$r
   i = 1
@@ -245,7 +259,6 @@ r_interpol <- function(t) {
                                                                         1]) * (t - t_wib[i - 1]))
 }
 r_interpol %<>% Vectorize()
-# black scholes formula
 BlackScholes <- function(S, K, r, T, sig, type,T_stoch) {
   if (type == 1) {
     d1 <- (log(S / K) + (r + sig ^ 2 / 2) * T_stoch) / (sig * sqrt(T_stoch))
@@ -263,8 +276,7 @@ BlackScholes <- function(S, K, r, T, sig, type,T_stoch) {
     return(value)
   }
 }
-BlackScholes %<>% Vectorize
-#imlied volatility
+BlackScholes %<>% Vectorize()
 impvol <- function(Price, S, K, t, r, type,t_stoch) {
   upper = 1
   lower = 0
@@ -284,30 +296,7 @@ impvol <- function(Price, S, K, t, r, type,t_stoch) {
   }
   return(m)
 }
-
 impvol %<>% Vectorize()
-data %<>% mutate(ImpVol = impvol(Kurs, S0, Strike, Time, r_interpol(Time), Call_or_Put,Stoch_Time))
-data %<>% mutate(ImpPrice = BlackScholes(S0, Strike, r_interpol(Time), Time, ImpVol, Call_or_Put,Stoch_Time))
-
-data <- data[(abs(data$Kurs - data$ImpPrice) < 0.01),]
-data %>% ggplot(aes(Strike, ImpVol)) + geom_point() + facet_grid(~ Terminal_Date)
-data %>% ggplot(aes(Strike, ImpVol, color = Terminal_Date)) + geom_point() +
-  geom_line()
-#identyfikacja odstajacych
-#odstajace1 <-  data %>% filter(Terminal_Date == "2022-12-16" & ImpVol > 1.7) %>% rownames()
-#rawdata %>% filter(Profil %in% odstajace1) %>%  View
-
-#regresja liniowa
-lm_data <- data %>% select(ImpVol, Strike, Time)
-lm1 = lm(data = lm_data,
-         ImpVol ~ Strike + I(Strike ^ 2) + Time + I(Time ^ 2) + I(Strike * Time))
-summary(lm1)
-vol_surface <- function(k, t) {
-  b = coefficients(lm1)
-  return(b[1] + k * b[2] + k ^ 2 * b[3] + b[4] * t + b[5] * t ^ 2 + b[6] *
-           t * k)
-}
-##wykres
 wykres_3d <-
   function(f,
            xlim = c(0.01, 5),
@@ -340,14 +329,42 @@ wykres_3d <-
       zlab = "impVol"
     )
   }
-#wykres_3d(vol_surface,xlim=c(1000,2000),ylim=c(0,1),stepx=10,stepy = 0.1)
-# open3d(plot3d(
-#   x = data$Strike,
-#   y = data$Time,
-#   z = data$ImpVol,
-#   xlab = "K",
-#   ylab = "t"
-# ))
+#### MAIN ###$
+data <- download_data("https://www.biznesradar.pl/gielda/pochodne_opcje")
+data <- opracuj_dane(data)
+no_trade <- as.Date(get_no_trade_days())
+data %<>% mutate(Terminal_Date = terminal_date(Profil, Month_number))
+data %<>% mutate(Time = time(Terminal_Date))
+data %<>% filter(Time>0) 
+data %<>% mutate(Stoch_Time = stoch_time(Terminal_Date))
+
+## wyczyszczenie data frame
+row.names(data) = (data$Profil)
+data %<>% select(-Profil,-MonthLetter,-Month_number)
+S0=download_S0()
+
+wibor <- get_wibor()
+###### wycztanie S0
+data %<>% mutate(S0=match_S0(Last_Trade)) 
+######
+rm(S0)
+data %<>% mutate(ImpVol = impvol(Kurs, S0, Strike, Time, r_interpol(Time), Call_or_Put,Stoch_Time))
+data %<>% mutate(ImpPrice = BlackScholes(S0, Strike, r_interpol(Time), Time, ImpVol, Call_or_Put,Stoch_Time))
+
+data <- data[(abs(data$Kurs - data$ImpPrice) < 0.01),]
+data %>% ggplot(aes(Strike, ImpVol)) + geom_point() + facet_grid(~ Terminal_Date)
+data %>% ggplot(aes(Strike, ImpVol, color = Terminal_Date)) + geom_point() +
+  geom_line()
+#regresja liniowa
+lm_data <- data %>% select(ImpVol, Strike, Time)
+lm1 = lm(data = lm_data,
+         ImpVol ~ Strike + I(Strike ^ 2) + Time + I(Time ^ 2) + I(Strike * Time))
+summary(lm1)
+vol_surface <- function(k, t) {
+  b = coefficients(lm1)
+  return(b[1] + k * b[2] + k ^ 2 * b[3] + b[4] * t + b[5] * t ^ 2 + b[6] *
+           t * k)
+}
 wykres_3d(
   vol_surface,
   xlim = c(1000, 2500),
@@ -368,3 +385,4 @@ wykres_3d(
   ylim = c(0, 1),
   stepx = 1,
   stepy = 0.01,data$Strike,data$Time,data$ImpVol)
+
